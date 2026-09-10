@@ -9,6 +9,10 @@ import {
   asStore,
   propertyValue,
   mergeValues,
+  awaitedValue,
+  promiseValue,
+  callResult,
+  propertiesOf,
 } from "./reactive-values";
 
 interface Module {
@@ -170,7 +174,7 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
     if (!symbol) return null;
     if (env.has(symbol)) {
       const value = env.get(symbol)!;
-      return args ? (value?.kind === "accessor" ? value.result : null) : value;
+      return args ? callResult(value) : value;
     }
     const declarations = symbol.declarations ?? [];
     const declaration =
@@ -188,6 +192,10 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
     if (++steps > 1000 || seen.has(node)) return null;
     const next = new Set(seen).add(node);
     const valueOf = (node: ts.Node): Value => evaluate(module, node, undefined, env, next);
+    if (ts.isAwaitExpression(node)) {
+      const value = awaitedValue(valueOf(node.expression));
+      return args ? callResult(value) : value;
+    }
     if (
       ts.isParenthesizedExpression(node) ||
       ts.isAsExpression(node) ||
@@ -228,20 +236,16 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
     ) {
       const tuple = valueOf(node.parent.parent);
       const value = propertyValue(tuple, String(node.parent.elements.indexOf(node)));
-      return args ? (value?.kind === "accessor" ? value.result : null) : value;
+      return args ? callResult(value) : value;
     }
     if (
       ts.isArrowFunction(node) ||
       ts.isFunctionExpression(node) ||
       ts.isFunctionDeclaration(node)
     ) {
-      if (
-        !args ||
-        !node.body ||
-        node.asteriskToken ||
-        ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Async
-      )
-        return null;
+      if (!args || !node.body || node.asteriskToken) return null;
+      const wrap = (value: Value): Value =>
+        ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Async ? promiseValue(value) : value;
       const local = new Map(env);
       node.parameters.forEach((param, index) => {
         if (ts.isIdentifier(param.name)) {
@@ -253,7 +257,7 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
             );
         }
       });
-      if (!ts.isBlock(node.body)) return evaluate(module, node.body, undefined, local, next);
+      if (!ts.isBlock(node.body)) return wrap(evaluate(module, node.body, undefined, local, next));
       let result: Value = null;
       const visit = (child: ts.Node): void => {
         if (ts.isFunctionLike(child) || ts.isClassLike(child)) return;
@@ -262,11 +266,20 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
         } else ts.forEachChild(child, visit);
       };
       visit(node.body);
-      return result;
+      return wrap(result);
     }
     if (ts.isCallExpression(node)) {
+      if (
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression) &&
+        node.expression.expression.text === "Promise" &&
+        node.expression.name.text === "resolve" &&
+        !module.checker.getSymbolAtLocation(node.expression.expression)?.declarations?.length
+      ) {
+        return args ? null : promiseValue(node.arguments[0] ? valueOf(node.arguments[0]) : null);
+      }
       const value = evaluate(module, node.expression, node.arguments.map(valueOf), env, next);
-      return args ? (value?.kind === "accessor" ? value.result : null) : value;
+      return args ? callResult(value) : value;
     }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       const key = ts.isPropertyAccessExpression(node)
@@ -283,7 +296,7 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
         }
       }
       const value = propertyValue(valueOf(node.expression), key);
-      return args ? (value?.kind === "accessor" ? value.result : null) : value;
+      return args ? callResult(value) : value;
     }
     if (args) return null;
     if (ts.isObjectLiteralExpression(node)) {
@@ -291,9 +304,7 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
       for (const property of node.properties) {
         if (ts.isSpreadAssignment(property)) {
           const value = valueOf(property.expression);
-          if (value?.kind === "object" || value?.kind === "plain") {
-            for (const [key, entry] of value.properties) properties.set(key, entry);
-          }
+          for (const [key, entry] of propertiesOf(value)) properties.set(key, entry);
         } else if (ts.isPropertyAssignment(property) && !ts.isComputedPropertyName(property.name)) {
           properties.set(property.name.text, valueOf(property.initializer));
         } else if (ts.isShorthandPropertyAssignment(property)) {

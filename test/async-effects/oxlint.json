@@ -1,0 +1,10 @@
+{
+  "plugins": [],
+  "categories": { "correctness": "off" },
+  "jsPlugins": ["../../packages/eslint-plugin-solid/dist/index.js"],
+  "settings": { "solid": { "version": 2 } },
+  "rules": {
+    "solid/reactivity": "error",
+    "solid/no-reactive-read-in-effect-callback": "error"
+  }
+}

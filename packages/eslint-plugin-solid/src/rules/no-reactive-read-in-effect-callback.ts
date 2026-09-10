@@ -12,6 +12,11 @@ import {
   propertyValue,
   propertyName,
   mergeValues,
+  awaitedValue,
+  promiseValue,
+  hasKind,
+  callResult,
+  propertiesOf,
 } from "../utils/reactive-values";
 import {
   FunctionNode,
@@ -189,7 +194,8 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
     };
 
     // Parser visitor keys exclude parent links and include TS/JSX nodes.
-    // Nested functions are visited only when a synchronous call is known.
+    // Nested functions are visited only for known calls. Async helpers called
+    // by apply remain untracked on both sides of their suspension points.
     const walk = (node: T.Node, visit: (node: T.Node) => void): void => {
       if (isFunctionNode(node)) return;
       visit(node);
@@ -229,13 +235,11 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
         bind(pattern.left, value ?? infer(pattern.right, env, next), env, check, next);
       } else if (pattern.type === "ObjectPattern") {
         for (const property of pattern.properties) {
-          if (check && value?.kind === "object") report(property);
+          if (check && hasKind(value, "object")) report(property);
           if (property.type === "RestElement") {
             bind(
               property.argument,
-              value?.kind === "object" || value?.kind === "plain"
-                ? { kind: "plain", properties: new Map(value.properties) }
-                : null,
+              { kind: "plain", properties: new Map(propertiesOf(value)) },
               env,
               false,
               next
@@ -252,7 +256,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
           }
         }
       } else if (pattern.type === "ArrayPattern") {
-        if (check && value?.kind === "object") report(pattern);
+        if (check && hasKind(value, "object")) report(pattern);
         pattern.elements.forEach((element, index) => {
           if (element) bind(element, propertyValue(value, String(index)), env, check, next);
         });
@@ -281,11 +285,28 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
     };
 
     const resultOf = (fn: FunctionNode, env: Bindings, seen: Set<T.Node>): Value => {
-      if (seen.has(fn)) return null;
+      if (seen.has(fn) || fn.generator) return null;
       const next = new Set(seen).add(fn);
-      return returns(fn).reduce<Value>(
+      const result = returns(fn).reduce<Value>(
         (value, node) => mergeValues(value, infer(node, env, next)),
         null
+      );
+      return fn.async ? promiseValue(result) : result;
+    };
+
+    const computeValue = (
+      node: T.Node | undefined,
+      env: Bindings,
+      seen = new Set<T.Node>()
+    ): Value => {
+      if (!node) return null;
+      const fn = resolveFunction(node);
+      if (fn) return awaitedValue(resultOf(fn, env, seen));
+      const binding = importedBinding(node);
+      return awaitedValue(
+        binding
+          ? importedValue(binding.source, binding.name, [])
+          : callResult(infer(node, env, seen))
       );
     };
 
@@ -294,6 +315,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
       const node = unwrap(input);
       if (seen.has(node)) return null;
       const next = new Set(seen).add(node);
+      if (node.type === "AwaitExpression") return awaitedValue(infer(node.argument, env, next));
       if (node.type === "Identifier") {
         const variable = findVariable(context, node);
         if (!variable) return null;
@@ -335,9 +357,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
         for (const property of node.properties) {
           if (property.type === "SpreadElement") {
             const value = infer(property.argument, env, next);
-            if (value?.kind === "object" || value?.kind === "plain") {
-              for (const [key, entry] of value.properties) properties.set(key, entry);
-            }
+            for (const [key, entry] of propertiesOf(value)) properties.set(key, entry);
           } else {
             const key = propertyName(property.key, property.computed);
             if (key !== null) properties.set(key, infer(property.value, env, next));
@@ -357,6 +377,17 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
         return mergeValues(infer(node.left, env, next), infer(node.right, env, next));
       }
       if (node.type === "CallExpression") {
+        // Only the unshadowed built-in Promise.resolve has these semantics.
+        if (
+          node.callee.type === "MemberExpression" &&
+          node.callee.object.type === "Identifier" &&
+          node.callee.object.name === "Promise" &&
+          propertyName(node.callee.property, node.callee.computed) === "resolve"
+        ) {
+          const variable = findVariable(context, node.callee.object);
+          if (!variable?.defs.length && !variable?.references.some((ref) => ref.isWrite()))
+            return promiseValue(infer(node.arguments[0], env, next));
+        }
         const primitive = solidImport(node.callee);
         const first = node.arguments[0];
         const fn = resolveFunction(first);
@@ -365,7 +396,9 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
           primitive === "createOptimistic" ||
           primitive === "createMemo"
         ) {
-          const result = fn ? resultOf(fn, env, next) : infer(first, env, next);
+          // Solid unwraps async computations, but a signal initialized with a
+          // Promise as data still holds that Promise.
+          const result = computeValue(first, env, next) ?? infer(first, env, next);
           const accessor: Value = { kind: "accessor", result };
           return primitive === "createMemo"
             ? accessor
@@ -405,7 +438,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
           );
         }
         const callee = infer(node.callee, env, next);
-        if (callee?.kind === "accessor") return callee.result;
+        if (hasKind(callee, "accessor")) return callResult(callee);
         const called = resolveFunction(node.callee);
         if (called && !next.has(called)) {
           return resultOf(
@@ -433,9 +466,9 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
           bind(node.id, infer(node.init, env), env, true);
         } else if (node.type === "AssignmentExpression") {
           bind(node.left, infer(node.right, env), env, true);
-        } else if (node.type === "SpreadElement" && infer(node.argument, env)?.kind === "object") {
+        } else if (node.type === "SpreadElement" && hasKind(infer(node.argument, env), "object")) {
           report(node);
-        } else if (node.type === "MemberExpression" && infer(node.object, env)?.kind === "object") {
+        } else if (node.type === "MemberExpression" && hasKind(infer(node.object, env), "object")) {
           const parent = node.parent;
           if (
             !isCallbackPropCall(node, env) &&
@@ -450,7 +483,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
         }
         if (node.type !== "CallExpression") return;
         const callee = infer(node.callee, env);
-        if (callee?.kind === "accessor") report(node);
+        if (hasKind(callee, "accessor")) report(node);
         const called = resolveFunction(node.callee);
         if (called) {
           analyze(
@@ -463,7 +496,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
             ),
             next
           );
-        } else if (callee?.kind === "setter") {
+        } else if (hasKind(callee, "setter")) {
           const updater = resolveFunction(node.arguments[0]);
           // The setter's previous value/draft is safe; captured values are not.
           if (updater) analyze(updater, callBindings(updater, [], env, true), next);
@@ -508,13 +541,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
           }
           if (!apply) continue;
           const env: Bindings = new Map();
-          const compute = resolveFunction(node.arguments[0]);
-          const accessor = infer(node.arguments[0], env);
-          const value = compute
-            ? resultOf(compute, env, new Set())
-            : accessor?.kind === "accessor"
-            ? accessor.result
-            : null;
+          const value = computeValue(node.arguments[0], env);
           analyze(apply, callBindings(apply, [value, value], env, true));
         }
       },

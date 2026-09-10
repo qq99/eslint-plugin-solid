@@ -84,6 +84,19 @@ assert.deepStrictEqual(verify([
   '  createEffect(() => 1, () => { console.log(props.text.trim()); });',
   '}',
 ].join("\\n"), rules).map((message) => message.messageId), ["untrackedRead"]);
+
+// Awaited provenance also works in the browser bundle without Node APIs.
+assert.deepStrictEqual(verify([
+  'import { createEffect, createMemo, createStore } from "solid-js";',
+  'const [state] = createStore({ name: "Ada" });',
+  'const data = createMemo(async () => await Promise.resolve(state));',
+  'createEffect(data, value => console.log(value.name));',
+].join("\\n"), rules).map((message) => message.messageId), ["untrackedRead"]);
+assert.deepStrictEqual(verify([
+  'import { createEffect, createStore } from "solid-js";',
+  'const [state] = createStore({ name: "Ada" });',
+  'createEffect(() => ({ pending: Promise.resolve(state) }), value => { value.pending.then(consume); });',
+].join("\\n"), rules), []);
 `,
   { identifier: "test.mjs", context }
 );

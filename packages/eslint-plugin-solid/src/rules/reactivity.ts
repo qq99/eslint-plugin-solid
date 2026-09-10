@@ -390,7 +390,11 @@ export default createRule<Options, MessageIds>({
           const node = cn as T.Node;
           if (node !== fn.body && isFunctionNode(node)) {
             this.skip(); // nested functions suspend independently
-          } else if (node.type === "AwaitExpression" || node.type === "YieldExpression") {
+          } else if (
+            node.type === "AwaitExpression" ||
+            node.type === "YieldExpression" ||
+            (node.type === "ForOfStatement" && node.await)
+          ) {
             suspension = node;
             this.break();
           }
@@ -400,7 +404,8 @@ export default createRule<Options, MessageIds>({
       let taint: number | null = null;
       if (suspension) {
         // the operands of the first suspension point are still evaluated synchronously
-        taint = suspension.range[1];
+        taint =
+          suspension.type === "ForOfStatement" ? suspension.body.range[0] : suspension.range[1];
         let ancestor: T.Node | undefined = suspension.parent;
         while (ancestor && ancestor !== fn) {
           if (
@@ -1285,9 +1290,14 @@ export default createRule<Options, MessageIds>({
               callee.name
             )
           ) {
-            // createEffect, createMemo, etc. fn arg. createMemo may take an async
-            // function in Solid 2.0; only reads before its first `await` are tracked.
-            pushTrackedScope(arg0, "function", Boolean(matchImport("createMemo", callee.name)));
+            // Solid 2 computations may settle asynchronously. This does not
+            // extend dependency tracking beyond the first suspension point.
+            pushTrackedScope(
+              arg0,
+              "function",
+              Boolean(matchImport("createMemo", callee.name)) ||
+                (v2 && Boolean(matchImport(["createEffect", "createRenderEffect"], callee.name)))
+            );
             if (
               matchImport(["createErrorBoundary", "createLoadingBoundary"], callee.name) &&
               arg1

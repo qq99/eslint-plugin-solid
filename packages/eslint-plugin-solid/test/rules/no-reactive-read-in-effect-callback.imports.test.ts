@@ -10,6 +10,34 @@ run("no-reactive-read-in-effect-callback imports", rule, {
   valid: [
     {
       code: `import { createEffect } from "solid-js";
+import { getSnapshot } from "@fixtures/async";
+createEffect(() => getSnapshot(), (value) => console.log(value.name));`,
+      settings,
+      filename,
+    },
+    ...["getStore", "getPromise"].map((name) => ({
+      code: `import { createEffect } from "solid-js";
+import { ${name} } from "@fixtures/async";
+createEffect(() => ({ pending: ${name}() }), (value) => { value.pending.then(consume); });`,
+      settings,
+      filename,
+    })),
+    {
+      code: `import { createEffect } from "solid-js";
+import { getPending } from "@fixtures/async";
+createEffect(() => getPending(), (value) => { value.pending.then(consume); });`,
+      settings,
+      filename,
+    },
+    {
+      code: `import { createEffect } from "solid-js";
+import { shadowed } from "@fixtures/async";
+createEffect(() => shadowed({ resolve: () => ({ name: "plain" }) }), (value) => console.log(value.name));`,
+      settings,
+      filename,
+    },
+    {
+      code: `import { createEffect } from "solid-js";
 import { useQuery } from "other-library";
 const query = useQuery();
 createEffect(() => query.data, (value) => console.log(value.name));`,
@@ -59,6 +87,48 @@ createEffect(() => state, (value) => console.log(value.name));`,
     },
   ],
   invalid: [
+    {
+      code: `import { createEffect } from "solid-js";
+import { getStore } from "@fixtures/async";
+createEffect(getStore, (value) => console.log(value.name));`,
+      settings,
+      filename,
+      errors,
+    },
+    {
+      code: `import { createEffect, createMemo } from "solid-js";
+import { getStore } from "@fixtures/async";
+const data = createMemo(getStore);
+createEffect(data, (value) => console.log(value.name));`,
+      settings,
+      filename,
+      errors,
+    },
+    ...["getStore()", "getPromise()", "mixed(flag)"].map((expression) => ({
+      code: `import { createEffect } from "solid-js";
+import { getStore, getPromise, mixed } from "@fixtures/async";
+createEffect(async () => await ${expression}, (value) => console.log(value.name));`,
+      settings,
+      filename,
+      errors,
+    })),
+    {
+      code: `import { createEffect, createStore } from "solid-js";
+import { identity } from "@fixtures/async";
+const [state] = createStore({ name: "Ada" });
+createEffect(() => identity(state), (value) => console.log(value.name));`,
+      settings,
+      filename,
+      errors,
+    },
+    {
+      code: `import { createEffect } from "solid-js";
+import { getNested } from "@fixtures/async";
+createEffect(() => getNested(), (value) => console.log(value.state.name));`,
+      settings,
+      filename,
+      errors,
+    },
     ...["useQuery", "useInfiniteQuery"].map((name) => ({
       code: `import { createEffect } from "solid-js";
 import { ${name} as query } from "@tanstack/solid-query";

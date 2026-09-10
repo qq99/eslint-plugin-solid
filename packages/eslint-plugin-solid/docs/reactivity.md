@@ -11,6 +11,32 @@ This rule is **a warning** by default.
 Below are a few common patterns that cause warnings, what these warnings mean, and whether these
 warnings can be safely ignored.
 
+### Solid 2 async effect computations
+
+With `settings: { solid: { version: 2 } }`, the compute functions of `createEffect` and
+`createRenderEffect` may be async, just like async memos. Dependency tracking still stops
+at the first suspension point. Capture reactive inputs before awaiting:
+
+```js
+createEffect(
+  async () => {
+    const id = userId(); // tracked
+    const response = await fetch(`/users/${id}`);
+    return response.json();
+  },
+  (user) => console.log(user.name),
+);
+```
+
+Moving `userId()` after the `await` produces a `readAfterAwait` warning: later changes to
+that signal would not rerun the computation. This support applies to the **compute**
+function, not to the imperative effect callback, which returns a cleanup function or
+nothing. `createTrackedEffect` remains synchronous. Solid 1 and unspecified-version
+configurations retain the existing async-effect warning.
+
+For store proxies returned by async computations, also enable
+[`solid/no-reactive-read-in-effect-callback`](./no-reactive-read-in-effect-callback.md).
+
 ### Accessing reactive variables in the component body
 
 ```jsx

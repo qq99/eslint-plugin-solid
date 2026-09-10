@@ -54,6 +54,45 @@ createEffect(
 Now compute subscribes to `settings.theme`, and apply receives a plain string each time it
 changes. These setup snippets belong inside a component or another owned scope.
 
+## Async computations and `await`
+
+Awaiting a store does not turn it into a plain snapshot. The same rule applies when an
+async memo or effect compute function resolves to a proxy:
+
+```js
+import { createEffect, createMemo, createStore } from "solid-js";
+
+const [settings] = createStore({ theme: "light" });
+const data = createMemo(async () => await Promise.resolve(settings));
+
+createEffect(data, (value) => {
+  document.body.dataset.theme = value.theme; // error: still a store proxy
+});
+```
+
+Read the needed properties **before the first `await`**, then carry their plain values
+through the async work. This minimal example uses an already-resolved Promise to isolate
+the suspension boundary:
+
+```js
+const data = createMemo(async () => {
+  const theme = settings.theme; // tracked dependency
+  await Promise.resolve();
+  return { theme }; // plain snapshot
+});
+
+createEffect(data, (value) => {
+  document.body.dataset.theme = value.theme;
+});
+```
+
+Solid settles async computations before their consumers receive the result. This rule
+follows `await`, unshadowed `Promise.resolve`, and visible local/imported async helpers.
+It distinguishes a Promise from its resolved value: calling a Promise's methods is not
+a reactive property read, and promises nested in object fields are not automatically
+unwrapped. The separate `solid/reactivity` rule reports tracked dependencies read after
+the computation suspends; an `await` does not extend dependency tracking.
+
 ## Plain containers and nested stores
 
 An object created in compute can collect several values. Reading its plain fields in apply is
@@ -189,7 +228,8 @@ This is bounded source analysis, not a type-level proof of reactivity. It uses v
 initializers and supported scalar type annotations to distinguish primitive fields from
 nested proxies; fields of an unknown reactive object are treated as potentially reactive.
 It cannot fully follow mutations to
-object shapes, dynamic calls, arbitrary higher-order functions, or reads hidden in imported
+object shapes, dynamic calls, arbitrary higher-order functions, Promise chains/combinators
+(such as `.then` and `Promise.all`), async iterators, or reads hidden in imported
 helpers. Passing a proxy to a library that reads it internally may therefore go undetected.
 
 Cross-file tracing inspects return values, not side effects inside imported helpers. It

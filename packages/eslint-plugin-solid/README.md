@@ -115,7 +115,7 @@ If your project targets Solid 2.0, use the `v2` configuration. It sets
 `imports`, `no-unknown-namespaces`, `event-handlers`, `jsx-no-undef`) to strict 2.0 semantics, and
 enables the 2.0-specific rules: `removed-api`, `no-single-arg-create-effect`,
 `no-accessor-as-prop`, `no-boolean-enumerated-attribute`, `no-store-mutation-outside-setter`,
-`no-write-in-pure-computation`, and the server function rules (`valid-use-server`,
+`no-write-in-pure-computation`, `no-reactive-read-in-effect-callback`, and the server function rules (`valid-use-server`,
 `require-async-server-function`, `no-invalid-server-capture`,
 `no-browser-globals-in-server-function`) as errors, with `prefer-structured-class` and
 `no-unused-signal` as warnings. This is the config the official Solid 2.0 templates ship
@@ -205,7 +205,7 @@ For Solid 2.0 projects, add `"settings": { "solid": { "version": 2 } }` to activ
 version-aware rule behavior, and enable the 2.0 rules (`solid/removed-api`,
 `solid/no-single-arg-create-effect`, `solid/no-accessor-as-prop`,
 `solid/no-store-mutation-outside-setter`, `solid/no-write-in-pure-computation`,
-`solid/no-unused-signal`, `solid/prefer-structured-class`, and the server function rules `solid/valid-use-server`,
+`solid/no-reactive-read-in-effect-callback`, `solid/no-unused-signal`, `solid/prefer-structured-class`, and the server function rules `solid/valid-use-server`,
 `solid/require-async-server-function`, `solid/no-invalid-server-capture`, and
 `solid/no-browser-globals-in-server-function`).
 
@@ -236,6 +236,7 @@ version-aware rule behavior, and enable the 2.0 rules (`solid/removed-api`,
 |  |  | [solid/no-proxy-apis](/packages/eslint-plugin-solid/docs/no-proxy-apis.md) | Disallow usage of APIs that use ES6 Proxies, only to target environments that don't support them. |
 | ✔ | 🔧 | [solid/no-react-deps](/packages/eslint-plugin-solid/docs/no-react-deps.md) | Disallow usage of dependency arrays in `createEffect` and `createMemo`. |
 | ✔ | 🔧 | [solid/no-react-specific-props](/packages/eslint-plugin-solid/docs/no-react-specific-props.md) | Disallow usage of React-specific `className`/`htmlFor` props, which were deprecated in v1.4.0. |
+|  |  | [solid/no-reactive-read-in-effect-callback](/packages/eslint-plugin-solid/docs/no-reactive-read-in-effect-callback.md) | Disallow reading reactive values in the untracked apply callback of a Solid 2 split effect. |
 |  | 🔧 | [solid/no-restated-default-options](/packages/eslint-plugin-solid/docs/no-restated-default-options.md) | Disallow restating a prop or option value that is already the default. |
 |  |  | [solid/no-single-arg-create-effect](/packages/eslint-plugin-solid/docs/no-single-arg-create-effect.md) | Require the two-argument `createEffect(compute, effect)` form used by Solid 2.0. |
 |  |  | [solid/no-store-mutation-outside-setter](/packages/eslint-plugin-solid/docs/no-store-mutation-outside-setter.md) | Disallow mutating a store's read proxy; store state changes only through the setter's mutable draft. |

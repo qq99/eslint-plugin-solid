@@ -29,6 +29,8 @@ test("v2 configs set the Solid version and enable the 2.0 rules", () => {
   expect(v2Config.rules["solid/removed-api"]).toBe(2);
   expect(v2Config.rules["solid/no-single-arg-create-effect"]).toBe(2);
   expect(v2Config.rules["solid/no-accessor-as-prop"]).toBe(2);
+  expect(v2Config.rules["solid/no-reactive-read-in-effect-callback"]).toBe(2);
+  expect(v2StrictConfig.rules["solid/no-reactive-read-in-effect-callback"]).toBe(2);
   expect(v2Config.rules["solid/prefer-structured-class"]).toBe(1);
   expect(v2Config.rules["solid/prefer-classlist"]).toBe(0);
   expect(v2Config.rules["solid/valid-use-server"]).toBe(2);

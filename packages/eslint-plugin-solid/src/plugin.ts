@@ -23,6 +23,7 @@ import noModuleScopeReactivePrimitive from "./rules/no-module-scope-reactive-pri
 import noProxyApis from "./rules/no-proxy-apis";
 import noReactDeps from "./rules/no-react-deps";
 import noReactSpecificProps from "./rules/no-react-specific-props";
+import noReactiveReadInEffectCallback from "./rules/no-reactive-read-in-effect-callback";
 import noRestatedDefaultOptions from "./rules/no-restated-default-options";
 import noSingleArgCreateEffect from "./rules/no-single-arg-create-effect";
 import noStoreMutationOutsideSetter from "./rules/no-store-mutation-outside-setter";
@@ -66,6 +67,7 @@ const allRules = {
   "no-proxy-apis": noProxyApis,
   "no-react-deps": noReactDeps,
   "no-react-specific-props": noReactSpecificProps,
+  "no-reactive-read-in-effect-callback": noReactiveReadInEffectCallback,
   "no-restated-default-options": noRestatedDefaultOptions,
   "no-single-arg-create-effect": noSingleArgCreateEffect,
   "no-store-mutation-outside-setter": noStoreMutationOutsideSetter,

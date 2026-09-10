@@ -33,6 +33,8 @@ const v2 = {
     "solid/no-store-mutation-outside-setter": 2,
     // writes inside memos/compute halves create cycles and throw in 2.0 dev
     "solid/no-write-in-pure-computation": 2,
+    // the apply half receives a value outside tracking; reads must happen in compute
+    "solid/no-reactive-read-in-effect-callback": 2,
     // signals that are never written (or never read) aren't being used as signals
     "solid/no-unused-signal": 1,
     // uncalled accessors as DOM attributes render stringified functions

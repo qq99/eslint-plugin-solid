@@ -292,7 +292,7 @@ export default createRule<Options, MessageIds>({
       noAsyncTrackedScope:
         "This tracked scope should not be async. Solid's reactivity only tracks synchronously.",
       readAfterAwait:
-        "The reactive variable '{{name}}' is read after this computation suspends (at an 'await' or 'yield'), so changes to it won't be tracked. Read it before the first 'await' and store the result in a variable.",
+        "The reactive variable '{{name}}' is read after this computation suspends (at an 'await' or 'yield'), so changes to it won't be tracked. Read it before the first suspension point and store the result in a variable.",
       staleCapture:
         "'{{captured}}' captures the value of the reactive variable '{{name}}' at setup, but a returned function reads the capture later — it will never update. Call '{{name}}' inside the returned function instead, or prefix '{{captured}}' with 'initial'/'default'/'static' if a one-time snapshot is intended.",
       providerValue:

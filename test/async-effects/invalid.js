@@ -16,3 +16,22 @@ createEffect(
   },
   (value) => console.log(value)
 );
+
+const streamed = createMemo(async function* () {
+  yield state;
+});
+createEffect(streamed, (value) => console.log(value.name));
+
+function* child() {
+  yield state;
+}
+const delegated = createMemo(async function* () {
+  yield* child();
+});
+createEffect(delegated, (value) => console.log(value.name));
+
+const stale = createMemo(async function* () {
+  yield 0;
+  yield id();
+});
+createEffect(stale, (value) => console.log(value));

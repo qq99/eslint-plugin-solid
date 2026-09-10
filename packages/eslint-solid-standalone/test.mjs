@@ -78,6 +78,21 @@ assert.deepStrictEqual(verify([
   '  createEffect(() => props.text, (text) => { props.onChange?.(text.trim()); });',
   '}',
 ].join("\\n"), rules), []);
+
+// Delegation emits a generator's yields, not its final return.
+assert.deepStrictEqual(verify([
+  'import { createEffect, createMemo, createStore } from "solid-js";',
+  'const [state] = createStore({ name: "Ada" });',
+  'function* child() { yield state; }',
+  'const data = createMemo(async function* () { yield* child(); });',
+  'createEffect(data, value => console.log(value.name));',
+].join("\\n"), rules).map((message) => message.messageId), ["untrackedRead"]);
+assert.deepStrictEqual(verify([
+  'import { createEffect, createMemo, createStore } from "solid-js";',
+  'const [state] = createStore({ name: "Ada" });',
+  'const data = createMemo(async function* () { yield { name: state.name }; return state; });',
+  'createEffect(data, value => console.log(value.name));',
+].join("\\n"), rules), []);
 assert.deepStrictEqual(verify([
   'import { createEffect } from "solid-js";',
   'function Component(props: { text: string }) {',

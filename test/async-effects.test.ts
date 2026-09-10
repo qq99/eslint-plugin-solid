@@ -26,6 +26,9 @@ test("built plugin checks async effects in ESLint and Oxlint", async () => {
     "untrackedRead",
     "untrackedRead",
     "readAfterAwait",
+    "untrackedRead",
+    "untrackedRead",
+    "readAfterAwait",
   ]);
 
   const require = createRequire(import.meta.url);
@@ -47,7 +50,7 @@ test("built plugin checks async effects in ESLint and Oxlint", async () => {
   expect(result.status).toBe(1);
   expect(result.stderr).toBe("");
   const { diagnostics } = JSON.parse(result.stdout);
-  expect(diagnostics).toHaveLength(3);
+  expect(diagnostics).toHaveLength(6);
   expect(diagnostics.every((d: any) => path.basename(d.filename) === "invalid.js")).toBe(true);
   expect(diagnostics.map((d: any) => d.message).sort()).toEqual(
     results.flatMap((r) => r.messages.map((m) => m.message)).sort()

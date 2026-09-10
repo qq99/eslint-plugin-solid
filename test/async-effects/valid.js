@@ -10,6 +10,12 @@ const data = createMemo(async () => {
 });
 createEffect(data, (value) => console.log(value.name));
 
+const streamed = createMemo(async function* () {
+  yield { name: state.name };
+  return state;
+});
+createEffect(streamed, (value) => console.log(value.name));
+
 createEffect(
   async () => await Promise.resolve(id()),
   (value) => console.log(value)

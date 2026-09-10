@@ -93,6 +93,49 @@ a reactive property read, and promises nested in object fields are not automatic
 unwrapped. The separate `solid/reactivity` rule reports tracked dependencies read after
 the computation suspends; an `await` does not extend dependency tracking.
 
+## Async generators and `yield`
+
+Solid 2 can consume an async generator as a stream of computation results. Yielding a store
+still passes its proxy to the consumer:
+
+```js
+import { createEffect, createMemo, createStore } from "solid-js";
+
+const [settings] = createStore({ theme: "light" });
+const data = createMemo(async function* () {
+  yield settings;
+});
+
+createEffect(data, (value) => {
+  document.body.dataset.theme = value.theme; // error: still a store proxy
+});
+```
+
+Instead, capture the properties before the first suspension and yield plain snapshots:
+
+```js
+const data = createMemo(async function* () {
+  const theme = settings.theme; // tracked dependency
+  yield { theme };
+  await Promise.resolve();
+  yield { theme }; // reuse the captured value after suspension
+});
+```
+
+The rule follows `yield` and `yield*` through visible local/imported generator helpers and
+known arrays. Async generators unwrap promises they yield. Nested object fields retain
+their original values, including stores and promises.
+
+A generator's final `return` is not a stream emission. With `yield* child()`, the child's
+yielded values reach the consumer, but its final return only does so if the parent explicitly
+yields it. Creating an iterator, or awaiting the iterator itself, does not consume it.
+Solid consumes an async iterator at the computation boundary, not ordinary synchronous
+iterators or iterators nested inside emitted values.
+
+The separate `solid/reactivity` rule warns about dependencies read after `yield` in async
+computations. Reads in `action` generators are intentionally untracked and remain allowed;
+these rules do not check action transaction-context restoration.
+
 ## Plain containers and nested stores
 
 An object created in compute can collect several values. Reading its plain fields in apply is
@@ -229,8 +272,9 @@ initializers and supported scalar type annotations to distinguish primitive fiel
 nested proxies; fields of an unknown reactive object are treated as potentially reactive.
 It cannot fully follow mutations to
 object shapes, dynamic calls, arbitrary higher-order functions, Promise chains/combinators
-(such as `.then` and `Promise.all`), async iterators, or reads hidden in imported
-helpers. Passing a proxy to a library that reads it internally may therefore go undetected.
+(such as `.then` and `Promise.all`), custom iterator implementations, manual `.next()`
+consumption, or reads hidden in imported helpers. Passing a proxy to a library that reads it
+internally may therefore go undetected.
 
 Cross-file tracing inspects return values, not side effects inside imported helpers. It
 does not inspect implementations in `node_modules` or infer reactivity from `.d.ts` files.

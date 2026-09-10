@@ -17,6 +17,10 @@ import {
   hasKind,
   callResult,
   propertiesOf,
+  iteratorValue,
+  iterationValue,
+  iterationReturn,
+  computationValue,
 } from "../utils/reactive-values";
 import {
   FunctionNode,
@@ -285,12 +289,21 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
     };
 
     const resultOf = (fn: FunctionNode, env: Bindings, seen: Set<T.Node>): Value => {
-      if (seen.has(fn) || fn.generator) return null;
+      if (seen.has(fn)) return null;
       const next = new Set(seen).add(fn);
       const result = returns(fn).reduce<Value>(
         (value, node) => mergeValues(value, infer(node, env, next)),
         null
       );
+      if (fn.generator) {
+        let yielded: Value = null;
+        walk(fn.body, (node) => {
+          if (node.type !== "YieldExpression" || !node.argument) return;
+          const value = infer(node.argument, env, next);
+          yielded = mergeValues(yielded, node.delegate ? iterationValue(value) : value);
+        });
+        return iteratorValue(fn.async, yielded, result);
+      }
       return fn.async ? promiseValue(result) : result;
     };
 
@@ -301,9 +314,9 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
     ): Value => {
       if (!node) return null;
       const fn = resolveFunction(node);
-      if (fn) return awaitedValue(resultOf(fn, env, seen));
+      if (fn) return computationValue(resultOf(fn, env, seen));
       const binding = importedBinding(node);
-      return awaitedValue(
+      return computationValue(
         binding
           ? importedValue(binding.source, binding.name, [])
           : callResult(infer(node, env, seen))
@@ -316,6 +329,13 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
       if (seen.has(node)) return null;
       const next = new Set(seen).add(node);
       if (node.type === "AwaitExpression") return awaitedValue(infer(node.argument, env, next));
+      if (node.type === "YieldExpression") {
+        if (!node.delegate) return null;
+        const result = iterationReturn(infer(node.argument ?? undefined, env, next));
+        let parent: T.Node | undefined = node.parent;
+        while (parent && !isFunctionNode(parent)) parent = parent.parent;
+        return parent && isFunctionNode(parent) && parent.async ? awaitedValue(result) : result;
+      }
       if (node.type === "Identifier") {
         const variable = findVariable(context, node);
         if (!variable) return null;

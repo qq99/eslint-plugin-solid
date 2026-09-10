@@ -258,12 +258,22 @@ const user = createMemo(async () => {
 });
 ```
 
-Reads inside the operands of the first `await` are still evaluated synchronously and are allowed
-(`await fetch(\`/api/users/${id()}\`)` is fine). If the first suspension point sits inside a loop,
-the entire loop is treated as after-suspension, since later iterations resume after the previous
-iteration's `await`. Event handlers, `on*` lifecycle callbacks, and `action` functions are not
-tracked scopes, so reads after `await` there remain allowed—they intentionally poll current
-values.
+The same boundary applies to Solid 2 async generators:
+
+```js
+const data = createMemo(async function* () {
+  const currentId = id(); // tracked
+  yield currentId;
+  yield id(); // warning: this read happens after suspension
+});
+```
+
+Reads inside the operands of the first `await` or `yield` are still evaluated synchronously and
+are allowed (`await fetch(\`/api/users/${id()}\`)` and `yield id()` are fine). If the first suspension
+point sits inside a loop, the entire loop is treated as after-suspension, since later iterations
+resume after the previous iteration's `await` or `yield`. Event handlers, `on*` lifecycle callbacks, and `action` functions
+are not tracked scopes, so reads after `await` or `yield` there remain allowed—they intentionally
+poll current values. This is not a check for missing transaction-context restoration in actions.
 
 ### Stale captures in returned functions
 

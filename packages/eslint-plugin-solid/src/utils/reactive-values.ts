@@ -1,8 +1,9 @@
 import type { TSESTree as T } from "@typescript-eslint/utils";
 
 export type Value =
-  | { kind: "object" | "plain"; properties: Map<string, Value> }
+  | { kind: "object" | "plain"; properties: Map<string, Value>; array?: boolean }
   | { kind: "accessor" | "promise"; result: Value }
+  | { kind: "iterator"; async: boolean; yielded: Value; returned: Value }
   | { kind: "union"; values: Value[] }
   | { kind: "setter" }
   | { kind: "scalar" }
@@ -14,6 +15,7 @@ export const scalar: Value = { kind: "scalar" };
 export const container = (entries: Array<[string, Value]>): Value => ({
   kind: "plain",
   properties: new Map(entries),
+  array: true,
 });
 
 // Awaiting unwraps only the outer value, never promises stored in its fields.
@@ -28,6 +30,41 @@ export const promiseValue = (value: Value): Value => ({
   kind: "promise",
   result: awaitedValue(value),
 });
+
+export const iteratorValue = (async: boolean, yielded: Value, returned: Value): Value => ({
+  kind: "iterator",
+  async,
+  // Native async generators await each yield/return, but sync generators do not.
+  yielded: async ? awaitedValue(yielded) : yielded,
+  returned: async ? awaitedValue(returned) : returned,
+});
+
+export const iterationValue = (value: Value): Value => {
+  if (value?.kind === "iterator") return value.yielded;
+  if (value?.kind === "union") return value.values.map(iterationValue).reduce(mergeValues, null);
+  if ((value?.kind === "object" || value?.kind === "plain") && value.array)
+    return [...value.properties]
+      .filter(([key]) => /^\d+$/.test(key))
+      .map(([, item]) => item)
+      .reduce(mergeValues, null);
+  return null;
+};
+
+// The result of yield* is the delegated iterator's final return, not its yields.
+export const iterationReturn = (value: Value): Value =>
+  value?.kind === "iterator"
+    ? value.returned
+    : value?.kind === "union"
+    ? value.values.map(iterationReturn).reduce(mergeValues, null)
+    : null;
+
+// Solid settles a Promise, then consumes one AsyncIterable. It neither drains
+// ordinary sync iterators nor recursively consumes streams yielded as values.
+export const computationValue = (value: Value): Value => {
+  value = awaitedValue(value);
+  if (value?.kind === "union") return value.values.map(computationValue).reduce(mergeValues, null);
+  return value?.kind === "iterator" && value.async ? value.yielded : value;
+};
 
 export const hasKind = (value: Value, kind: NonNullable<Value>["kind"]): boolean =>
   value?.kind === kind ||
@@ -61,6 +98,7 @@ export const asStore = (value: Value): Value =>
     ? {
         kind: "object",
         properties: new Map([...value.properties].map(([key, value]) => [key, asStore(value)])),
+        array: value.array,
       }
     : value ?? object;
 
@@ -85,9 +123,15 @@ export const mergeValues = (left: Value, right: Value): Value => {
   if (left === right) return left;
   if (left.kind === "promise" && right.kind === "promise")
     return promiseValue(mergeValues(left.result, right.result));
-  // Preserve promise/non-promise alternatives until the consumer awaits them.
-  // Collapsing them early mistakes Promise methods for reactive property reads.
-  if ([left.kind, right.kind].some((kind) => kind === "promise" || kind === "union")) {
+  if (left.kind === "iterator" && right.kind === "iterator" && left.async === right.async)
+    return iteratorValue(
+      left.async,
+      mergeValues(left.yielded, right.yielded),
+      mergeValues(left.returned, right.returned)
+    );
+  // Preserve wrapper/value alternatives until the consuming operation is known.
+  // Collapsing them early mistakes Promise/iterator methods for reactive reads.
+  if ([left.kind, right.kind].some((kind) => ["promise", "iterator", "union"].includes(kind))) {
     return {
       kind: "union",
       values: [
@@ -111,6 +155,7 @@ export const mergeValues = (left: Value, right: Value): Value => {
     return {
       kind: left.kind === "object" || right.kind === "object" ? "object" : "plain",
       properties,
+      array: left.array && right.array,
     };
   }
   return left;

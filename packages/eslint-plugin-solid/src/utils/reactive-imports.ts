@@ -13,6 +13,9 @@ import {
   promiseValue,
   callResult,
   propertiesOf,
+  iteratorValue,
+  iterationValue,
+  iterationReturn,
 } from "./reactive-values";
 
 interface Module {
@@ -196,6 +199,15 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
       const value = awaitedValue(valueOf(node.expression));
       return args ? callResult(value) : value;
     }
+    if (ts.isYieldExpression(node)) {
+      let value =
+        node.asteriskToken && node.expression ? iterationReturn(valueOf(node.expression)) : null;
+      let parent: ts.Node | undefined = node.parent;
+      while (parent && !ts.isFunctionLike(parent)) parent = parent.parent;
+      if (parent && ts.getCombinedModifierFlags(parent as ts.Declaration) & ts.ModifierFlags.Async)
+        value = awaitedValue(value);
+      return args ? callResult(value) : value;
+    }
     if (
       ts.isParenthesizedExpression(node) ||
       ts.isAsExpression(node) ||
@@ -243,9 +255,9 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
       ts.isFunctionExpression(node) ||
       ts.isFunctionDeclaration(node)
     ) {
-      if (!args || !node.body || node.asteriskToken) return null;
-      const wrap = (value: Value): Value =>
-        ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Async ? promiseValue(value) : value;
+      if (!args || !node.body) return null;
+      const async = Boolean(ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Async);
+      const wrap = (value: Value): Value => (async ? promiseValue(value) : value);
       const local = new Map(env);
       node.parameters.forEach((param, index) => {
         if (ts.isIdentifier(param.name)) {
@@ -259,14 +271,20 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
       });
       if (!ts.isBlock(node.body)) return wrap(evaluate(module, node.body, undefined, local, next));
       let result: Value = null;
+      let yielded: Value = null;
       const visit = (child: ts.Node): void => {
         if (ts.isFunctionLike(child) || ts.isClassLike(child)) return;
         if (ts.isReturnStatement(child) && child.expression) {
           result = mergeValues(result, evaluate(module, child.expression, undefined, local, next));
-        } else ts.forEachChild(child, visit);
+        } else if (node.asteriskToken && ts.isYieldExpression(child) && child.expression) {
+          const value = evaluate(module, child.expression, undefined, local, next);
+          yielded = mergeValues(yielded, child.asteriskToken ? iterationValue(value) : value);
+        }
+        // A return expression may itself contain yield or yield*.
+        ts.forEachChild(child, visit);
       };
       visit(node.body);
-      return wrap(result);
+      return node.asteriskToken ? iteratorValue(async, yielded, result) : wrap(result);
     }
     if (ts.isCallExpression(node)) {
       if (

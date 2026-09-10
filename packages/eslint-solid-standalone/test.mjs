@@ -66,6 +66,24 @@ assert.deepStrictEqual(verifyAndFix('let el = <div className="red" />'), {
   messages: [],
   output: 'let el = <div class="red" />',
 });
+
+// Scalar refinement must also work with a virtual input and no filesystem APIs.
+const solid2 = plugin.configs["flat/typescript"];
+solid2.settings = { solid: { version: 2 } };
+solid2.rules = { "solid/no-reactive-read-in-effect-callback": 2 };
+const rules = { "solid/no-reactive-read-in-effect-callback": 2 };
+assert.deepStrictEqual(verify([
+  'import { createEffect } from "solid-js";',
+  'function Component(props: { text: string; onChange?: (value: string) => void }) {',
+  '  createEffect(() => props.text, (text) => { props.onChange?.(text.trim()); });',
+  '}',
+].join("\\n"), rules), []);
+assert.deepStrictEqual(verify([
+  'import { createEffect } from "solid-js";',
+  'function Component(props: { text: string }) {',
+  '  createEffect(() => 1, () => { console.log(props.text.trim()); });',
+  '}',
+].join("\\n"), rules).map((message) => message.messageId), ["untrackedRead"]);
 `,
   { identifier: "test.mjs", context }
 );

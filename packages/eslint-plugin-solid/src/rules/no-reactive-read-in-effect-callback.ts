@@ -67,7 +67,11 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
 
     const sourceCode = context.sourceCode;
     const solidSource = getSolidSourceRegex(context);
-    const importedValue = createReactiveImportResolver(context.physicalFilename, solidSource);
+    const { value: importedValue, type: typeOf } = createReactiveImportResolver(
+      context.physicalFilename,
+      solidSource,
+      sourceCode.text
+    );
     const factories = new Set(options.reactiveObjectFactories);
     const reported = new Set<number>();
     const parameterReads = new WeakMap<Bindings, T.Node[]>();
@@ -150,6 +154,28 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
     const solidImport = (node: T.Node): string | null => {
       const binding = importedBinding(node);
       return binding && solidSource.test(binding.source) ? binding.name : null;
+    };
+
+    const isCallbackPropCall = (node: T.MemberExpression, env: Bindings): boolean => {
+      // Conventional event callbacks are imperative, not dependencies. Limit
+      // this to direct calls on props with a known void callback signature;
+      // ordinary data props, accessor props, and store methods still warn.
+      const name = propertyName(node.property, node.computed);
+      if (
+        !name ||
+        !/^on[A-Z]/.test(name) ||
+        node.parent.type !== "CallExpression" ||
+        node.parent.callee !== node
+      )
+        return false;
+      const base = resolve(node.object);
+      if (base?.type !== "Identifier" || !isPropsByName(base.name)) return false;
+      const variable = findVariable(context, base);
+      return (
+        variable?.defs[0]?.type === "Parameter" &&
+        !env.has(variable) &&
+        typeOf(node.range) === "callback"
+      );
     };
 
     const report = (node: T.Node): void => {
@@ -287,10 +313,15 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
         return bindings.get(variable) ?? null;
       }
       if (node.type === "MemberExpression") {
-        return propertyValue(
+        const value = propertyValue(
           infer(node.object, env, next),
           propertyName(node.property, node.computed)
         );
+        // Reading a scalar field is still reactive, but its copied result is
+        // not a proxy. Refine only the value, never suppress the original read.
+        return (value === null || value.kind === "object") && typeOf(node.range) === "scalar"
+          ? scalar
+          : value;
       }
       if (
         node.type === "Literal" ||
@@ -407,6 +438,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
         } else if (node.type === "MemberExpression" && infer(node.object, env)?.kind === "object") {
           const parent = node.parent;
           if (
+            !isCallbackPropCall(node, env) &&
             !(
               parent?.type === "AssignmentExpression" &&
               parent.left === node &&

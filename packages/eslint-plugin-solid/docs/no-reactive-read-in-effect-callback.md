@@ -114,6 +114,35 @@ compute. Passing an accessor without calling it is not itself a reactive read.
 Explicit reads inside `untrack(() => ...)` are allowed. They intentionally do not become
 dependencies; use them only when changes to that value should not rerun the effect.
 
+### Scalar snapshots and callback props
+
+Type annotations can establish that a copied field is a primitive, not a nested proxy.
+For example, calling `.trim()` on the string below is safe because compute already read
+the reactive property:
+
+```ts
+import { createEffect } from "solid-js";
+
+function Search(props: { query: string }) {
+  createEffect(
+    () => props.query,
+    (query) => { console.log(query.trim()); },
+  );
+}
+```
+
+This refinement follows supported local type aliases, interfaces, generic arguments, and
+imports. It works without typed-linting configuration, including in Oxlint. `any`, `unknown`,
+unresolved types, and unions that can contain objects remain potentially reactive. A direct
+`props.query` read in apply still warns even when its result is a string.
+
+Direct calls to conventional `onX` props with a known void-returning callback signature,
+such as `props.onChange?.(value)`, are treated as imperative notifications. This convention
+assumes the callback's identity is not an effect dependency. If changing the callback should
+rerun the effect, read it in compute explicitly. Accessor-like or untyped functions, functions
+on stores, reading a callback without calling it, and reactive arguments passed to a callback
+are not exempted.
+
 ### Imported factories and local wrappers
 
 The rule automatically recognizes `useQuery` and `useInfiniteQuery` imported from
@@ -157,8 +186,9 @@ do not need to be listed.
 ### Limits
 
 This is bounded source analysis, not a type-level proof of reactivity. It uses visible
-initializers to distinguish primitive fields from nested proxies; fields of an unknown
-reactive object are treated as potentially reactive. It cannot fully follow mutations to
+initializers and supported scalar type annotations to distinguish primitive fields from
+nested proxies; fields of an unknown reactive object are treated as potentially reactive.
+It cannot fully follow mutations to
 object shapes, dynamic calls, arbitrary higher-order functions, or reads hidden in imported
 helpers. Passing a proxy to a library that reads it internally may therefore go undetected.
 
@@ -166,7 +196,10 @@ Cross-file tracing inspects return values, not side effects inside imported help
 does not inspect implementations in `node_modules` or infer reactivity from `.d.ts` files.
 Missing files, unsupported expressions, parse errors, and analysis limits leave a value
 unclassified. Work is bounded to 32 local modules per linted file and 1,000 analysis steps per
-import lookup. The factory override remains available for those cases.
+import or type lookup. Type refinement uses the current source buffer, shares the bounded
+local module cache, and does not load external library declarations. It is not a replacement
+for TypeScript's full type checker. The factory override remains available for unresolved
+reactive factories.
 
 Nested tracking functions, scheduled callbacks, returned cleanup functions, and the bundle's
 error handler are outside this rule's apply analysis. There is no automatic fix: choosing

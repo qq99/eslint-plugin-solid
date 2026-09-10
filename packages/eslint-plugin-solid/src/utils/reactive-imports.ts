@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { createReactiveTypeResolver } from "./reactive-types";
 import {
   Value,
   object,
@@ -24,7 +25,7 @@ interface Module {
  * Caches live for one linted file so editor runs cannot retain stale sources.
  * File/step limits bound work on cyclic or unusually large module graphs.
  */
-export function createReactiveImportResolver(filename: string, solidSource: RegExp) {
+export function createReactiveImportResolver(filename: string, solidSource: RegExp, text: string) {
   const modules = new Map<string, Module | null>();
   let resolutionOptions: ts.CompilerOptions | undefined;
   let steps = 0;
@@ -334,8 +335,19 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
     return null;
   };
 
-  return (source: string, name: string, args?: Value[]): Value => {
-    steps = 0;
-    return imported(source, name, filename, args, new Set());
+  return {
+    value(source: string, name: string, args?: Value[]): Value {
+      steps = 0;
+      return imported(source, name, filename, args, new Set());
+    },
+    type: createReactiveTypeResolver(
+      filename,
+      text,
+      (source, from) => {
+        const file = resolveFile(source, from);
+        return file ? load(file) : null;
+      },
+      solidSource
+    ),
   };
 }

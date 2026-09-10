@@ -9,7 +9,14 @@ const tsconfigPath = path.resolve("tsconfig.json");
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/", "**/dist.*", "**/.tsup/", "**/eslint.config.mjs", "test/"],
+    ignores: [
+      "**/dist/",
+      "**/dist.*",
+      "**/.tsup/",
+      "**/eslint.config.mjs",
+      "test/",
+      "packages/eslint-plugin-solid/test/fixtures/",
+    ],
   },
   js.configs.recommended,
   tseslint.configs.eslintRecommended,

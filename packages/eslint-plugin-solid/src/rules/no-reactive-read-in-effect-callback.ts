@@ -1,6 +1,18 @@
 import type { TSESLint } from "@typescript-eslint/utils";
 import { TSESTree as T, ESLintUtils } from "@typescript-eslint/utils";
 import { findVariable } from "../compat";
+import { createReactiveImportResolver } from "../utils/reactive-imports";
+import {
+  Value,
+  object,
+  scalar,
+  setter,
+  container,
+  asStore,
+  propertyValue,
+  propertyName,
+  mergeValues,
+} from "../utils/reactive-values";
 import {
   FunctionNode,
   getSolidSourceRegex,
@@ -13,70 +25,13 @@ import {
 type MessageIds = "untrackedRead";
 type Options = [{ reactiveObjectFactories?: string[] }];
 type Variable = TSESLint.Scope.Variable;
-type Value =
-  | { kind: "object" | "plain"; properties: Map<string, Value> }
-  | { kind: "accessor"; result: Value }
-  | { kind: "setter" }
-  | { kind: "scalar" }
-  | null;
 type Bindings = Map<Variable, Value>;
-
-const object: Value = { kind: "object", properties: new Map() };
-const setter: Value = { kind: "setter" };
-const scalar: Value = { kind: "scalar" };
-const container = (entries: Array<[string, Value]>): Value => ({
-  kind: "plain",
-  properties: new Map(entries),
-});
-
-// A store recursively wraps objects, but leaves primitive fields alone.
-const asStore = (value: Value): Value =>
-  value?.kind === "plain"
-    ? {
-        kind: "object",
-        properties: new Map([...value.properties].map(([key, value]) => [key, asStore(value)])),
-      }
-    : value ?? object;
-
-const propertyValue = (value: Value, key: string | null): Value => {
-  if (value?.kind !== "object" && value?.kind !== "plain") return null;
-  if (key !== null && value.properties.has(key)) return value.properties.get(key)!;
-  return value.kind === "object" ? object : null;
-};
-
-const propertyName = (key: T.Node, computed: boolean): string | null => {
-  if (!computed && key.type === "Identifier") return key.name;
-  if (key.type === "Literal" && (typeof key.value === "string" || typeof key.value === "number"))
-    return String(key.value);
-  return null;
-};
-
-const mergeValues = (left: Value, right: Value): Value => {
-  if (!left) return right;
-  if (!right) return left;
-  if (left.kind === "scalar") return right;
-  if (right.kind === "scalar") return left;
-  if (
-    (left.kind === "object" || left.kind === "plain") &&
-    (right.kind === "object" || right.kind === "plain")
-  ) {
-    const properties = new Map(left.properties);
-    for (const [key, value] of right.properties) {
-      properties.set(key, mergeValues(properties.get(key) ?? null, value));
-    }
-    return {
-      kind: left.kind === "object" || right.kind === "object" ? "object" : "plain",
-      properties,
-    };
-  }
-  return left;
-};
 
 /**
  * Track the shape of values crossing the compute/apply boundary. Plain
  * containers can retain proxies or accessors in individual fields; copying a
- * container is not necessarily a snapshot. This is local syntax analysis,
- * not a type checker or a whole-program data-flow analysis.
+ * container is not necessarily a snapshot. Imported return values are traced
+ * through bounded local source analysis, not a full project type check.
  */
 export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
   meta: {
@@ -112,6 +67,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
 
     const sourceCode = context.sourceCode;
     const solidSource = getSolidSourceRegex(context);
+    const importedValue = createReactiveImportResolver(context.physicalFilename, solidSource);
     const factories = new Set(options.reactiveObjectFactories);
     const reported = new Set<number>();
     const parameterReads = new WeakMap<Bindings, T.Node[]>();
@@ -157,7 +113,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
 
     // Resolve the binding, not just its spelling: aliases, namespaces and
     // shadowed imports must all have the same behavior.
-    const solidImport = (node: T.Node): string | null => {
+    const importedBinding = (node: T.Node): { source: string; name: string } | null => {
       node = resolve(node) ?? node;
       const id =
         node.type === "Identifier"
@@ -170,18 +126,30 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
       if (
         def?.type !== "ImportBinding" ||
         def.parent.type !== "ImportDeclaration" ||
-        !solidSource.test(def.parent.source.value)
+        def.parent.importKind === "type"
       )
         return null;
       if (node.type === "Identifier" && def.node.type === "ImportSpecifier") {
-        return def.node.imported.type === "Identifier"
-          ? def.node.imported.name
-          : def.node.imported.value;
+        if (def.node.importKind === "type") return null;
+        const name =
+          def.node.imported.type === "Identifier"
+            ? def.node.imported.name
+            : def.node.imported.value;
+        return { source: def.parent.source.value, name };
+      }
+      if (node.type === "Identifier" && def.node.type === "ImportDefaultSpecifier") {
+        return { source: def.parent.source.value, name: "default" };
       }
       if (node.type === "MemberExpression" && def.node.type === "ImportNamespaceSpecifier") {
-        return propertyName(node.property, node.computed);
+        const name = propertyName(node.property, node.computed);
+        return name === null ? null : { source: def.parent.source.value, name };
       }
       return null;
+    };
+
+    const solidImport = (node: T.Node): string | null => {
+      const binding = importedBinding(node);
+      return binding && solidSource.test(binding.source) ? binding.name : null;
     };
 
     const report = (node: T.Node): void => {
@@ -305,6 +273,10 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
         if (!variable) return null;
         if (env.has(variable)) return env.get(variable)!;
         const def = variable.defs[0];
+        if (def?.type === "ImportBinding") {
+          const binding = importedBinding(node);
+          return binding ? importedValue(binding.source, binding.name) : null;
+        }
         if (def?.type === "Parameter") return isPropsByName(node.name) ? object : null;
         if (def?.type !== "Variable" || !def.node.init || seen.has(def.node)) return null;
         if (variable.references.some((ref) => ref.isWrite() && !ref.init)) return null;
@@ -393,6 +365,14 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
           );
         }
         if (node.callee.type === "Identifier" && factories.has(node.callee.name)) return object;
+        const binding = importedBinding(node.callee);
+        if (binding) {
+          return importedValue(
+            binding.source,
+            binding.name,
+            node.arguments.map((arg) => infer(arg, env, next))
+          );
+        }
         const callee = infer(node.callee, env, next);
         if (callee?.kind === "accessor") return callee.result;
         const called = resolveFunction(node.callee);

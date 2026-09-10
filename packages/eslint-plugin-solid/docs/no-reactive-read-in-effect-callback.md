@@ -114,11 +114,28 @@ compute. Passing an accessor without calling it is not itself a reactive read.
 Explicit reads inside `untrack(() => ...)` are allowed. They intentionally do not become
 dependencies; use them only when changes to that value should not rerun the effect.
 
+### Imported factories and local wrappers
+
+The rule automatically recognizes `useQuery` and `useInfiniteQuery` imported from
+`@tanstack/solid-query`, including aliases and namespace imports. It also follows imports into
+local source files to inspect factory return values. For example, a local
+`createWebsitesQuery()` wrapper that returns `useQuery(...)` needs no rule configuration.
+
+Local tracing supports named/default exports, re-exports, relative imports, and path aliases
+from the linted file's nearest `tsconfig.json`. Wrappers returning Solid stores, signals,
+accessors, or plain containers containing them are also recognized when their return values
+can be followed. Reading scalar fields into a plain snapshot stays valid.
+
+This works in both ESLint and Oxlint without enabling typed linting. The rule uses TypeScript
+to resolve modules and local variable bindings; it does not run a full project type check or
+execute imported code. A real on-disk filename is needed for cross-file tracing. Browser
+playgrounds and virtual inputs still get the single-file and built-in library checks.
+
 ### Custom reactive objects
 
 Names beginning with `create` or `use` do not establish that a result is reactive. For a
-factory imported from another file or library, list its **local name** in
-`reactiveObjectFactories` if it returns a reactive object:
+factory from an unsupported library, or a wrapper whose implementation cannot be followed,
+list its **local name** in `reactiveObjectFactories` if it returns a reactive object:
 
 ```json
 {
@@ -132,18 +149,24 @@ factory imported from another file or library, list its **local name** in
 }
 ```
 
-For example, this covers an imported `createSettingsStore()` that returns the store half of
-`createStore`. An application using a query adapter that returns reactive objects can list
-its query factory or local wrapper here too. These names describe object factories, not
-functions returning accessor/setter tuples or plain data.
+For example, this covers a `createSettingsStore()` from a library that exposes only type
+declarations. These names describe object factories, not functions returning
+accessor/setter tuples or plain data. Ordinary local wrappers and the supported query APIs
+do not need to be listed.
 
 ### Limits
 
-This is syntax-based analysis, not a type-aware or cross-file proof. It uses visible
+This is bounded source analysis, not a type-level proof of reactivity. It uses visible
 initializers to distinguish primitive fields from nested proxies; fields of an unknown
 reactive object are treated as potentially reactive. It cannot fully follow mutations to
 object shapes, dynamic calls, arbitrary higher-order functions, or reads hidden in imported
 helpers. Passing a proxy to a library that reads it internally may therefore go undetected.
+
+Cross-file tracing inspects return values, not side effects inside imported helpers. It
+does not inspect implementations in `node_modules` or infer reactivity from `.d.ts` files.
+Missing files, unsupported expressions, parse errors, and analysis limits leave a value
+unclassified. Work is bounded to 32 local modules per linted file and 1,000 analysis steps per
+import lookup. The factory override remains available for those cases.
 
 Nested tracking functions, scheduled callbacks, returned cleanup functions, and the bundle's
 error handler are outside this rule's apply analysis. There is no automatic fix: choosing

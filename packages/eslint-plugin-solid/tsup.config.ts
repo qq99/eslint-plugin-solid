@@ -13,4 +13,5 @@ export default defineConfig({
   // experimentalDts: true,
   sourcemap: true,
   clean: true,
+  external: ["@typescript/typescript6"],
 });

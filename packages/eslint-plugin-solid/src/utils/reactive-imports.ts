@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { createReactiveTypeResolver } from "./reactive-types";
 import {
   Value,
@@ -23,6 +23,17 @@ interface Module {
   checker: ts.TypeChecker;
 }
 
+// The plugin owns this compiler API dependency so the consumer's TypeScript
+// compiler version cannot change the rule's analysis quality. Keep the guard
+// for the standalone/browser build, where the API is intentionally mocked out.
+const hasCompilerApi = Boolean(
+  typeof ts.createCompilerHost === "function" &&
+    typeof ts.createProgram === "function" &&
+    typeof ts.resolveModuleName === "function" &&
+    typeof ts.ScriptTarget?.Latest === "number" &&
+    typeof ts.ModuleKind?.ESNext === "number"
+);
+
 /**
  * Follow return values in local source modules. Each module is bound on its
  * own, without libraries or dependencies, solely to resolve lexical bindings.
@@ -38,6 +49,7 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
   let steps = 0;
 
   const load = (file: string): Module | null => {
+    if (!hasCompilerApi) return null;
     if (modules.has(file)) return modules.get(file)!;
     if (modules.size >= 32) return null;
     modules.set(file, null);
@@ -64,7 +76,8 @@ export function createReactiveImportResolver(filename: string, solidSource: RegE
 
   const resolveFile = (specifier: string, from: string): string | undefined => {
     // The browser standalone build and virtual lint inputs have no file graph.
-    if (!ts.sys?.fileExists || !filename || !ts.sys.fileExists(filename)) return undefined;
+    if (!hasCompilerApi || !ts.sys?.fileExists || !filename || !ts.sys.fileExists(filename))
+      return undefined;
     if (!resolutionOptions) {
       const config = ts.findConfigFile(filename, ts.sys.fileExists);
       resolutionOptions = config

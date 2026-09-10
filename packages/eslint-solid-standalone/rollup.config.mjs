@@ -43,6 +43,10 @@ export default {
           target: "./mock/empty.js",
         },
         {
+          match: /^@typescript\/typescript6$/,
+          target: "./mock/typescript6.js",
+        },
+        {
           // assert for web
           match: /^(node:)?assert$/u,
           target: "./mock/assert.js",

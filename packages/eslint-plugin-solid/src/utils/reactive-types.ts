@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 export interface TypeModule {
   source: ts.SourceFile;
@@ -8,6 +8,16 @@ export interface TypeModule {
 type Fact = "scalar" | "callback" | "nullish" | "void" | null;
 type TypeArgument = { module: TypeModule; node: ts.Node; env: Environment };
 type Environment = Map<ts.Symbol, TypeArgument>;
+
+// The plugin owns this compiler API dependency so type refinement does not vary
+// with the consumer's TypeScript compiler. The guard is for the standalone/
+// browser build, where this Node-only API is intentionally mocked out.
+const hasCompilerApi = Boolean(
+  typeof ts.createSourceFile === "function" &&
+    typeof ts.createProgram === "function" &&
+    typeof ts.forEachChild === "function" &&
+    typeof ts.ScriptTarget?.Latest === "number"
+);
 
 /** Only prove scalar snapshots and conventional void callback signatures.
  * Object types never establish (or disprove) reactivity. No parser services,
@@ -259,6 +269,7 @@ export function createReactiveTypeResolver(
   };
 
   return (range: readonly [number, number]): "scalar" | "callback" | null => {
+    if (!hasCompilerApi) return null;
     const key = `${range[0]}:${range[1]}`;
     if (!facts.has(key)) {
       const module = initialize();

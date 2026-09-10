@@ -28,7 +28,7 @@ createEffect(
   () => settings,
   (value) => {
     document.body.dataset.theme = value.theme; // error
-  },
+  }
 );
 ```
 
@@ -47,7 +47,7 @@ createEffect(
   () => settings.theme,
   (theme) => {
     document.body.dataset.theme = theme;
-  },
+  }
 );
 ```
 
@@ -147,7 +147,7 @@ import { createEffect, createStore } from "solid-js";
 const [settings] = createStore({ theme: "light" });
 createEffect(
   () => ({ theme: settings.theme }),
-  (value) => console.log(value.theme),
+  (value) => console.log(value.theme)
 );
 ```
 
@@ -160,7 +160,7 @@ import { createEffect, createStore } from "solid-js";
 const [state] = createStore({ user: { name: "Ada" } });
 createEffect(
   () => ({ ...state }),
-  (value) => console.log(value.user.name), // error: user is still a store proxy
+  (value) => console.log(value.user.name) // error: user is still a store proxy
 );
 ```
 
@@ -173,7 +173,7 @@ import { createEffect, createStore } from "solid-js";
 const [state] = createStore({ users: [{ name: "Ada" }] });
 createEffect(
   () => state.users.map((user) => ({ name: user.name })),
-  (users) => console.log(users[0].name),
+  (users) => console.log(users[0].name)
 );
 ```
 
@@ -208,7 +208,9 @@ import { createEffect } from "solid-js";
 function Search(props: { query: string }) {
   createEffect(
     () => props.query,
-    (query) => { console.log(query.trim()); },
+    (query) => {
+      console.log(query.trim());
+    }
   );
 }
 ```
@@ -237,10 +239,16 @@ from the linted file's nearest `tsconfig.json`. Wrappers returning Solid stores,
 accessors, or plain containers containing them are also recognized when their return values
 can be followed. Reading scalar fields into a plain snapshot stays valid.
 
-This works in both ESLint and Oxlint without enabling typed linting. The rule uses TypeScript
-to resolve modules and local variable bindings; it does not run a full project type check or
-execute imported code. A real on-disk filename is needed for cross-file tracing. Browser
-playgrounds and virtual inputs still get the single-file and built-in library checks.
+This works in both ESLint and Oxlint without enabling typed linting. The rule uses a pinned
+TypeScript 6 compatibility API to resolve modules and local variable bindings; it does not run
+a full project type check or execute imported code. The pinned API keeps cross-file and type
+refinement behavior independent of the consuming project's TypeScript compiler version. A real
+on-disk filename is needed for cross-file tracing. Browser playgrounds and virtual inputs still
+get the single-file and built-in library checks.
+
+Projects using TypeScript 6 or TypeScript 7 receive the same resolver and type refinement behavior
+as projects using TypeScript 5.x. The configured ESLint parser must still support the syntax in
+the linted source.
 
 ### Custom reactive objects
 

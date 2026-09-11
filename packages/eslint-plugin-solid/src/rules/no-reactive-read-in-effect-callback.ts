@@ -47,7 +47,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow reading reactive values in the untracked apply callback of a Solid 2 split effect.",
+        "Disallow reading potentially reactive values in the untracked apply callback of a Solid 2 split effect.",
       url: "https://github.com/solidjs-community/eslint-plugin-solid/blob/main/packages/eslint-plugin-solid/docs/no-reactive-read-in-effect-callback.md",
     },
     schema: [
@@ -67,7 +67,7 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
     ],
     messages: {
       untrackedRead:
-        "Reactive value '{{name}}' is read in an untracked effect callback. Read it in the compute function and pass a plain snapshot to the callback.",
+        "Potentially reactive value '{{name}}' is read in an untracked effect callback. Read it in the compute function and pass a plain snapshot to the callback.",
     },
   },
   defaultOptions: [{ reactiveObjectFactories: [] }],
@@ -345,6 +345,9 @@ export default ESLintUtils.RuleCreator.withoutDocs<Options, MessageIds>({
           const binding = importedBinding(node);
           return binding ? importedValue(binding.source, binding.name) : null;
         }
+        // Known helper arguments are handled by env above. Otherwise props may
+        // be getters, even with scalar types, defaults, or visible literal JSX
+        // callers; those do not prove that every caller supplies static data.
         if (def?.type === "Parameter") return isPropsByName(node.name) ? object : null;
         if (def?.type !== "Variable" || !def.node.init || seen.has(def.node)) return null;
         if (variable.references.some((ref) => ref.isWrite() && !ref.init)) return null;

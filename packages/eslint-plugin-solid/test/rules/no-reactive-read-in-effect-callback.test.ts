@@ -6,6 +6,30 @@ const settings = { solid: { version: 2 } };
 export const cases = run("no-reactive-read-in-effect-callback", rule, {
   valid: [
     {
+      // A props-like name does not make a locally known plain object reactive.
+      code: `import { createEffect } from "solid-js";
+const props = { offset: 8 };
+const options = props;
+createEffect(() => 1, () => console.log(options.offset));`,
+      settings,
+    },
+    {
+      // A helper's known argument takes precedence over the props convention.
+      code: `import { createEffect } from "solid-js";
+const options = { offset: 8 };
+function updatePosition(props) { console.log(props.offset); }
+createEffect(() => 1, () => updatePosition(options));`,
+      settings,
+    },
+    {
+      // An intentional non-dependency is explicit even for component props.
+      code: `import { createEffect, untrack } from "solid-js";
+function Dropdown(props) {
+  createEffect(() => 1, () => console.log(untrack(() => props.offset)));
+}`,
+      settings,
+    },
+    {
       // Merging plain data does not introduce reactive dependencies.
       code: `import { createEffect, merge, omit } from "solid-js";
 const options = omit(merge({ theme: "light", hidden: true }, {}), "hidden");
@@ -157,6 +181,28 @@ createEffect(() => 1, () => count());`,
     },
   ],
   invalid: [
+    ...["8", "isCompact() ? 8 : 16"].map((offset) => ({
+      // Visible JSX callers do not prove a component's props are always static.
+      code: `import { createEffect, createSignal } from "solid-js";
+function Dropdown(props) {
+  createEffect(() => 1, () => console.log(props.offset));
+}
+function App() {
+  const [isCompact] = createSignal(false);
+  return <Dropdown offset={${offset}} />;
+}`,
+      settings,
+      errors: [{ messageId: "untrackedRead", data: { name: "props.offset" } }],
+    })),
+    {
+      // A default object only applies when the caller omits the argument.
+      code: `import { createEffect } from "solid-js";
+function Dropdown(props = { offset: 8 }) {
+  createEffect(() => 1, () => console.log(props.offset));
+}`,
+      settings,
+      errors: [{ messageId: "untrackedRead", data: { name: "props.offset" } }],
+    },
     {
       code: `import { createEffect, createStore, merge, omit } from "solid-js";
 const [state] = createStore({ name: "Ada", hidden: true });

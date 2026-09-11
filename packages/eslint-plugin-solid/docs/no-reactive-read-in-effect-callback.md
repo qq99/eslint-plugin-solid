@@ -1,6 +1,6 @@
 <!-- doc-gen HEADER -->
 # solid/no-reactive-read-in-effect-callback
-Disallow reading reactive values in the untracked apply callback of a Solid 2 split effect.
+Disallow reading potentially reactive values in the untracked apply callback of a Solid 2 split effect.
 This rule is **off** by default.
 
 [View source](../src/rules/no-reactive-read-in-effect-callback.ts) · [View tests](../test/rules/no-reactive-read-in-effect-callback.test.ts)
@@ -195,6 +195,44 @@ compute. Passing an accessor without calling it is not itself a reactive read.
 
 Explicit reads inside `untrack(() => ...)` are allowed. They intentionally do not become
 dependencies; use them only when changes to that value should not rerun the effect.
+
+### Static props and runtime warnings
+
+Props parameters are treated as potentially reactive. A type such as `number` describes
+the result of reading a property, not whether the read invokes a getter backed by a signal.
+Both of these callers can satisfy the same `{ offset: number }` props type:
+
+```tsx
+<Dropdown offset={8} />;
+<Dropdown offset={isCompact() ? 8 : 16} />;
+```
+
+For the literal caller, reading `props.offset` accesses a plain value and does not produce
+`STRICT_READ_UNTRACKED`. For the conditional caller, the compiled prop getter reads
+`isCompact()`. Reading it in apply does not subscribe the effect to that dependency; reading
+it in compute does. The constant branches do not make the conditional prop static.
+
+The rule does not suppress a component's diagnostic based on its currently visible JSX
+callers. Other callers can arrive through exports, aliases, wrappers, or spreads. Scalar
+types, `readonly`, and default values also do not establish that a prop is static. A report
+identifies a potentially missing dependency; it does not guarantee a runtime warning or
+an observable bug with the current callers.
+
+Known plain objects remain allowed, including objects passed to local helpers from apply:
+
+```js
+import { createEffect } from "solid-js";
+
+const options = { offset: 8 };
+function updatePosition(props) {
+  console.log(props.offset);
+}
+createEffect(() => 1, () => updatePosition(options)); // allowed: known plain data
+```
+
+For props that determine a side effect, read them in compute so reactive callers work too.
+Use explicit `untrack` only when changes to a value should intentionally not rerun the
+effect, rather than because today's callers happen to pass literals.
 
 ### Scalar snapshots and callback props
 

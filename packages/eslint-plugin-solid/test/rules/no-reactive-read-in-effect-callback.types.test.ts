@@ -97,6 +97,15 @@ function Component(props: Props<string>) {
     },
   ],
   invalid: [
+    ...["{ offset: number }", "Readonly<{ offset: number }>", "{ offset: 8 | 16 }"].map((type) => ({
+      ...typed,
+      // Scalar/literal types and readonly describe values, not reactive getters.
+      code: `import { createEffect } from "solid-js";
+function Dropdown(props: ${type}) {
+  createEffect(() => 1, () => console.log(props.offset));
+}`,
+      errors: [{ messageId: "untrackedRead", data: { name: "props.offset" } }],
+    })),
     {
       ...typed,
       // A scalar result does not make the original property read safe.

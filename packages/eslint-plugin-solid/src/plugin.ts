@@ -38,6 +38,7 @@ import preferStructuredClass from "./rules/prefer-structured-class";
 import reactivity from "./rules/reactivity";
 import removedApi from "./rules/removed-api";
 import requireAsyncServerFunction from "./rules/require-async-server-function";
+import requireMatchNarrowing from "./rules/require-match-narrowing";
 import selfClosingComp from "./rules/self-closing-comp";
 import styleProp from "./rules/style-prop";
 import validUseServer from "./rules/valid-use-server";
@@ -82,6 +83,7 @@ const allRules = {
   reactivity,
   "removed-api": removedApi,
   "require-async-server-function": requireAsyncServerFunction,
+  "require-match-narrowing": requireMatchNarrowing,
   "self-closing-comp": selfClosingComp,
   "style-prop": styleProp,
   "valid-use-server": validUseServer,

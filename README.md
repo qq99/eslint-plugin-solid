@@ -205,7 +205,8 @@ For Solid 2.0 projects, add `"settings": { "solid": { "version": 2 } }` to activ
 version-aware rule behavior, and enable the 2.0 rules (`solid/removed-api`,
 `solid/no-single-arg-create-effect`, `solid/no-accessor-as-prop`,
 `solid/no-store-mutation-outside-setter`, `solid/no-write-in-pure-computation`,
-`solid/no-reactive-read-in-effect-callback`, `solid/no-unused-signal`, `solid/prefer-structured-class`, and the server function rules `solid/valid-use-server`,
+`solid/no-reactive-read-in-effect-callback`, `solid/require-match-narrowing`,
+`solid/no-unused-signal`, `solid/prefer-structured-class`, and the server function rules `solid/valid-use-server`,
 `solid/require-async-server-function`, `solid/no-invalid-server-capture`, and
 `solid/no-browser-globals-in-server-function`).
 
@@ -251,6 +252,7 @@ version-aware rule behavior, and enable the 2.0 rules (`solid/removed-api`,
 | ✔ |  | [solid/reactivity](/packages/eslint-plugin-solid/docs/reactivity.md) | Enforce that reactivity (props, signals, memos, etc.) is properly used, so changes in those values will be tracked and update the view as expected. |
 |  | 🔧 | [solid/removed-api](/packages/eslint-plugin-solid/docs/removed-api.md) | Disallow Solid 1.x APIs that were removed or renamed in Solid 2.0, with migration guidance. |
 |  | 🔧 | [solid/require-async-server-function](/packages/eslint-plugin-solid/docs/require-async-server-function.md) | Require server functions to be async, matching their client-side contract. |
+|  |  | [solid/require-match-narrowing](/packages/eslint-plugin-solid/docs/require-match-narrowing.md) | Require Match branches to consume the data selected by their condition through a narrowing callback. |
 | ✔ | 🔧 | [solid/self-closing-comp](/packages/eslint-plugin-solid/docs/self-closing-comp.md) | Disallow extra closing tags for components without children. |
 | ✔ | 🔧 | [solid/style-prop](/packages/eslint-plugin-solid/docs/style-prop.md) | Require CSS properties in the `style` prop to be valid and kebab-cased (ex. 'font-size'), not camel-cased (ex. 'fontSize') like in React, and that property values with dimensions are strings, not numbers with implicit 'px' units. |
 |  |  | [solid/valid-use-server](/packages/eslint-plugin-solid/docs/valid-use-server.md) | Enforce that "use server" directives are placed where the compiler honors them, and that module-level directive files export working server functions. |

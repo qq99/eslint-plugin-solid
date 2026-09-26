@@ -56,6 +56,8 @@ const v2 = {
     "solid/require-async-server-function": 2,
     // editor-time mirror of the compiler's closure-capture validation
     "solid/no-invalid-server-capture": 2,
+    // Keep Match branch data connected to its condition through narrowing.
+    "solid/require-match-narrowing": 2,
     // server functions never run where browser globals exist
     "solid/no-browser-globals-in-server-function": 2,
     // premise no longer exists in 2.0 (rule also self-gates on version)
